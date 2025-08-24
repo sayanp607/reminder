@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Kafka } = require('kafkajs');
+const { Pool } = require('pg');
 const { Queue, Worker } = require('bullmq');
 const Redis = require('ioredis');
 
@@ -16,6 +17,12 @@ const kafka = new Kafka({
 
 const consumer = kafka.consumer({ groupId: 'scheduler-group', sessionTimeout: 60000 });
 const producer = kafka.producer();
+
+// Setup Postgres connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 console.log('Attempting to connect to Redis...');
 const redis = new Redis({
@@ -56,6 +63,32 @@ redis.ping().then((res) => {
   console.error('Redis ping failed:', err);
 });
 
+async function pollDueReminders() {
+  try {
+    const now = new Date().toISOString();
+    // Query reminders that are due and not triggered
+    const result = await pool.query(
+      `SELECT * FROM reminders WHERE remind_at <= $1 AND (triggered IS NULL OR triggered = false)`,
+      [now]
+    );
+    for (const reminder of result.rows) {
+      // Publish to Kafka
+      await producer.send({
+        topic: 'reminder-triggered',
+        messages: [{ value: JSON.stringify(reminder) }],
+      });
+      // Mark as triggered
+      await pool.query(
+        `UPDATE reminders SET triggered = true WHERE id = $1`,
+        [reminder.id]
+      );
+      console.log('Polled and triggered reminder:', reminder);
+    }
+  } catch (err) {
+    console.error('Error polling due reminders:', err);
+  }
+}
+
 async function run() {
   try {
     console.log('Connecting Kafka consumer...');
@@ -69,68 +102,12 @@ async function run() {
     console.error('Error during Kafka setup:', err);
   }
 
-  await consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      try {
-        console.log(`Received message on topic ${topic}, partition ${partition}`);
-        const reminder = JSON.parse(message.value.toString());
-        console.log('Parsed reminder:', reminder);
-        const delay = new Date(reminder.remind_at) - Date.now();
-        console.log(`Calculated job delay: ${delay} ms for reminder ID: ${reminder.id}`);
-        if (delay > 0) {
-          const jobId = `reminder_${reminder.id}`;
-          console.log(`Attempting to remove any existing job with ID: ${jobId}`);
-          await queue.remove(jobId);
-          console.log(`Adding job to BullMQ: name='trigger-reminder', jobId='${jobId}', delay=${delay}`);
-          await queue.add('trigger-reminder', reminder, { delay, jobId });
-          console.log('BullMQ job added for reminder:', { id: reminder.id, jobId, delay });
-          console.log('Scheduled reminder:', reminder);
-        } else {
-          console.log('Reminder time is in the past, not scheduling:', reminder);
-        }
-      } catch (err) {
-        console.error('Error processing message:', err);
-      }
-    },
-  });
+  // Remove BullMQ logic, only use polling
 
-  console.log('Starting BullMQ worker...');
-  const worker = new Worker('reminder-queue', async job => {
-    try {
-      console.log('=== BullMQ Worker START ===');
-      console.log('Job received:', {
-        id: job.id,
-        name: job.name,
-        data: job.data,
-        opts: job.opts,
-        timestamp: new Date().toISOString()
-      });
-      const kafkaMessage = JSON.stringify(job.data);
-      console.log('Kafka message to send:', kafkaMessage);
-      const result = await producer.send({
-        topic: 'reminder-triggered',
-        messages: [{ value: kafkaMessage }],
-      });
-      console.log('Kafka send result:', result);
-      console.log('=== BullMQ Worker END ===');
-    } catch (err) {
-      console.error('Error in BullMQ worker:', err);
-    }
-  }, { connection: redis });
-  console.log('BullMQ worker started.');
 
-  worker.on('active', (job) => {
-    console.log(`BullMQ job active: ${job.id}`);
-  });
-  worker.on('completed', (job) => {
-    console.log(`BullMQ job completed: ${job.id}`);
-  });
-  worker.on('failed', (job, err) => {
-    console.error(`BullMQ job failed: ${job ? job.id : 'unknown'}, error:`, err);
-  });
-  worker.on('error', (err) => {
-    console.error('BullMQ worker error:', err);
-  });
+  // Start polling loop
+  setInterval(pollDueReminders, 60 * 1000); // every minute
+  console.log('Started periodic polling for due reminders.');
 }
 
 run().catch(console.error);
