@@ -28,30 +28,50 @@ const redis = new Redis({
 const queue = new Queue('reminder-queue', { connection: redis });
 
 async function run() {
-  await consumer.connect();
-  await producer.connect();
-  await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
+  try {
+    console.log('Connecting Kafka consumer...');
+    await consumer.connect();
+    console.log('Kafka consumer connected.');
+    await producer.connect();
+    console.log('Kafka producer connected.');
+    await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
+    console.log('Subscribed to topic: reminder-created');
+  } catch (err) {
+    console.error('Error during Kafka setup:', err);
+  }
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
-      const reminder = JSON.parse(message.value.toString());
-      const delay = new Date(reminder.remind_at) - Date.now();
-      if (delay > 0) {
-        // Use a string prefix for jobId to avoid BullMQ integer ID error
-        const jobId = `reminder_${reminder.id}`;
-        await queue.remove(jobId);
-        await queue.add('trigger-reminder', reminder, { delay, jobId });
-        console.log('Scheduled reminder:', reminder);
+    eachMessage: async ({ topic, partition, message }) => {
+      try {
+        console.log(`Received message on topic ${topic}, partition ${partition}`);
+        const reminder = JSON.parse(message.value.toString());
+        console.log('Parsed reminder:', reminder);
+        const delay = new Date(reminder.remind_at) - Date.now();
+        if (delay > 0) {
+          const jobId = `reminder_${reminder.id}`;
+          await queue.remove(jobId);
+          await queue.add('trigger-reminder', reminder, { delay, jobId });
+          console.log('Scheduled reminder:', reminder);
+        } else {
+          console.log('Reminder time is in the past, not scheduling:', reminder);
+        }
+      } catch (err) {
+        console.error('Error processing message:', err);
       }
     },
   });
 
   new Worker('reminder-queue', async job => {
-    await producer.send({
-      topic: 'reminder-created',
-      messages: [{ value: JSON.stringify(job.data) }],
-    });
-    console.log('Triggered reminder:', job.data);
+    try {
+      console.log('Worker triggered for job:', job);
+      await producer.send({
+        topic: 'reminder-created',
+        messages: [{ value: JSON.stringify(job.data) }],
+      });
+      console.log('Triggered reminder:', job.data);
+    } catch (err) {
+      console.error('Error in worker:', err);
+    }
   }, { connection: redis });
 }
 
