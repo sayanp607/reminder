@@ -57,6 +57,7 @@ async function sendEmail(reminder) {
   }
 }
 
+
 async function run() {
   await consumer.connect();
   await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
