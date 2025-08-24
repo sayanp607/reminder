@@ -6,6 +6,12 @@ const Redis = require('ioredis');
 const kafka = new Kafka({
   clientId: 'reminder-scheduler',
   brokers: [process.env.KAFKA_BROKER],
+  ssl: process.env.KAFKA_SSL === 'true',
+  sasl: {
+    mechanism: process.env.KAFKA_SASL_MECHANISM.toLowerCase(),
+    username: process.env.KAFKA_USERNAME,
+    password: process.env.KAFKA_PASSWORD,
+  },
 });
 
 const consumer = kafka.consumer({ groupId: 'scheduler-group', sessionTimeout: 60000 });
