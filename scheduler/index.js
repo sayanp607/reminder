@@ -54,3 +54,12 @@ async function run() {
 }
 
 run().catch(console.error);
+
+// Add a simple HTTP server to bind to a port for Render
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.end('Scheduler service running');
+}).listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
