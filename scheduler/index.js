@@ -76,10 +76,14 @@ async function run() {
         const reminder = JSON.parse(message.value.toString());
         console.log('Parsed reminder:', reminder);
         const delay = new Date(reminder.remind_at) - Date.now();
+        console.log(`Calculated job delay: ${delay} ms for reminder ID: ${reminder.id}`);
         if (delay > 0) {
           const jobId = `reminder_${reminder.id}`;
+          console.log(`Attempting to remove any existing job with ID: ${jobId}`);
           await queue.remove(jobId);
+          console.log(`Adding job to BullMQ: name='trigger-reminder', jobId='${jobId}', delay=${delay}`);
           await queue.add('trigger-reminder', reminder, { delay, jobId });
+          console.log('BullMQ job added for reminder:', { id: reminder.id, jobId, delay });
           console.log('Scheduled reminder:', reminder);
         } else {
           console.log('Reminder time is in the past, not scheduling:', reminder);
