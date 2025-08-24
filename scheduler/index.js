@@ -25,7 +25,21 @@ const redis = new Redis({
   maxRetriesPerRequest: null
 });
 
+redis.on('connect', () => {
+  console.log('Redis connection established.');
+});
+redis.on('error', (err) => {
+  console.error('Redis connection error:', err);
+});
+
 const queue = new Queue('reminder-queue', { connection: redis });
+
+// Test Redis connection at startup
+redis.ping().then((res) => {
+  console.log('Redis ping response:', res);
+}).catch((err) => {
+  console.error('Redis ping failed:', err);
+});
 
 async function run() {
   try {
@@ -61,18 +75,38 @@ async function run() {
     },
   });
 
-  new Worker('reminder-queue', async job => {
+  const worker = new Worker('reminder-queue', async job => {
     try {
-      console.log('Worker triggered for job:', job);
-      await producer.send({
-        topic: 'reminder-triggered',
-        messages: [{ value: JSON.stringify(job.data) }],
+      console.log('=== BullMQ Worker START ===');
+      console.log('Job received:', {
+        id: job.id,
+        name: job.name,
+        data: job.data,
+        opts: job.opts,
+        timestamp: new Date().toISOString()
       });
-      console.log('Triggered reminder:', job.data);
+      const kafkaMessage = JSON.stringify(job.data);
+      console.log('Kafka message to send:', kafkaMessage);
+      const result = await producer.send({
+        topic: 'reminder-triggered',
+        messages: [{ value: kafkaMessage }],
+      });
+      console.log('Kafka send result:', result);
+      console.log('=== BullMQ Worker END ===');
     } catch (err) {
-      console.error('Error in worker:', err);
+      console.error('Error in BullMQ worker:', err);
     }
   }, { connection: redis });
+
+  worker.on('completed', (job) => {
+    console.log(`BullMQ job completed: ${job.id}`);
+  });
+  worker.on('failed', (job, err) => {
+    console.error(`BullMQ job failed: ${job ? job.id : 'unknown'}, error:`, err);
+  });
+  worker.on('error', (err) => {
+    console.error('BullMQ worker error:', err);
+  });
 }
 
 run().catch(console.error);
