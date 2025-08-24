@@ -3,6 +3,7 @@ const { Kafka } = require('kafkajs');
 const twilio = require('twilio');
 const nodemailer = require('nodemailer');
 
+console.log('Starting notification service...');
 const kafka = new Kafka({
   clientId: 'notification-service',
   brokers: [process.env.KAFKA_BROKER],
@@ -32,12 +33,13 @@ const transporter = nodemailer.createTransport({
 
 async function sendSMS(reminder) {
   try {
+    console.log('Sending SMS to:', reminder.phone);
     await twilioClient.messages.create({
       body: `Reminder: ${reminder.title}\n${reminder.description}`,
       from: process.env.TWILIO_PHONE_NUMBER,
       to: reminder.phone // use phone from reminder event
     });
-    console.log('SMS sent:', reminder);
+    console.log('SMS sent:', reminder.phone);
   } catch (err) {
     console.error('Failed to send SMS:', err.message);
   }
@@ -45,13 +47,14 @@ async function sendSMS(reminder) {
 
 async function sendEmail(reminder) {
   try {
+    console.log('Sending Email to:', reminder.email);
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: reminder.email, // use email from reminder event
       subject: `Reminder: ${reminder.title}`,
       text: reminder.description,
     });
-    console.log('Email sent:', reminder);
+    console.log('Email sent:', reminder.email);
   } catch (err) {
     console.error('Failed to send Email:', err.message);
   }
@@ -63,8 +66,8 @@ async function run() {
     console.log('Connecting Kafka consumer...');
     await consumer.connect();
     console.log('Kafka consumer connected.');
-  await consumer.subscribe({ topic: 'reminder-triggered', fromBeginning: true });
-  console.log('Subscribed to topic: reminder-triggered');
+    await consumer.subscribe({ topic: 'reminder-triggered', fromBeginning: true });
+    console.log('Subscribed to topic: reminder-triggered');
   } catch (err) {
     console.error('Error during Kafka setup:', err);
   }
@@ -74,10 +77,18 @@ async function run() {
       try {
         console.log(`Received message on topic ${topic}, partition ${partition}`);
         console.log('Raw message value:', message.value.toString());
-        const reminder = JSON.parse(message.value.toString());
-        console.log('Parsed reminder:', reminder);
+        let reminder;
+        try {
+          reminder = JSON.parse(message.value.toString());
+          console.log('Parsed reminder:', reminder);
+        } catch (parseErr) {
+          console.error('Error parsing reminder message:', parseErr);
+          return;
+        }
+        console.log('Processing notification for reminder ID:', reminder.id);
         await sendSMS(reminder);
         await sendEmail(reminder);
+        console.log('Notification processing complete for reminder ID:', reminder.id);
       } catch (err) {
         console.error('Error processing message:', err);
       }

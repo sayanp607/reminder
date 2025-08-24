@@ -17,6 +17,7 @@ const kafka = new Kafka({
 const consumer = kafka.consumer({ groupId: 'scheduler-group', sessionTimeout: 60000 });
 const producer = kafka.producer();
 
+console.log('Attempting to connect to Redis...');
 const redis = new Redis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
@@ -28,11 +29,25 @@ const redis = new Redis({
 redis.on('connect', () => {
   console.log('Redis connection established.');
 });
+redis.on('ready', () => {
+  console.log('Redis connection ready.');
+});
+redis.on('close', () => {
+  console.log('Redis connection closed.');
+});
+redis.on('reconnecting', () => {
+  console.log('Redis reconnecting...');
+});
+redis.on('end', () => {
+  console.log('Redis connection ended.');
+});
 redis.on('error', (err) => {
   console.error('Redis connection error:', err);
 });
 
+console.log('Creating BullMQ queue...');
 const queue = new Queue('reminder-queue', { connection: redis });
+console.log('BullMQ queue created.');
 
 // Test Redis connection at startup
 redis.ping().then((res) => {
@@ -75,6 +90,7 @@ async function run() {
     },
   });
 
+  console.log('Starting BullMQ worker...');
   const worker = new Worker('reminder-queue', async job => {
     try {
       console.log('=== BullMQ Worker START ===');
@@ -97,7 +113,11 @@ async function run() {
       console.error('Error in BullMQ worker:', err);
     }
   }, { connection: redis });
+  console.log('BullMQ worker started.');
 
+  worker.on('active', (job) => {
+    console.log(`BullMQ job active: ${job.id}`);
+  });
   worker.on('completed', (job) => {
     console.log(`BullMQ job completed: ${job.id}`);
   });
