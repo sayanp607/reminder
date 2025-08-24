@@ -63,8 +63,8 @@ async function run() {
     console.log('Connecting Kafka consumer...');
     await consumer.connect();
     console.log('Kafka consumer connected.');
-    await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
-    console.log('Subscribed to topic: reminder-created');
+  await consumer.subscribe({ topic: 'reminder-triggered', fromBeginning: true });
+  console.log('Subscribed to topic: reminder-triggered');
   } catch (err) {
     console.error('Error during Kafka setup:', err);
   }

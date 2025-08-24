@@ -65,7 +65,7 @@ async function run() {
     try {
       console.log('Worker triggered for job:', job);
       await producer.send({
-        topic: 'reminder-created',
+        topic: 'reminder-triggered',
         messages: [{ value: JSON.stringify(job.data) }],
       });
       console.log('Triggered reminder:', job.data);
