@@ -59,14 +59,28 @@ async function sendEmail(reminder) {
 
 
 async function run() {
-  await consumer.connect();
-  await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
+  try {
+    console.log('Connecting Kafka consumer...');
+    await consumer.connect();
+    console.log('Kafka consumer connected.');
+    await consumer.subscribe({ topic: 'reminder-created', fromBeginning: true });
+    console.log('Subscribed to topic: reminder-created');
+  } catch (err) {
+    console.error('Error during Kafka setup:', err);
+  }
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
-      const reminder = JSON.parse(message.value.toString());
-      await sendSMS(reminder);
-      await sendEmail(reminder);
+    eachMessage: async ({ topic, partition, message }) => {
+      try {
+        console.log(`Received message on topic ${topic}, partition ${partition}`);
+        console.log('Raw message value:', message.value.toString());
+        const reminder = JSON.parse(message.value.toString());
+        console.log('Parsed reminder:', reminder);
+        await sendSMS(reminder);
+        await sendEmail(reminder);
+      } catch (err) {
+        console.error('Error processing message:', err);
+      }
     },
   });
 }
