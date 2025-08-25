@@ -12,8 +12,9 @@ app.get('/', (req, res) => {
 
 app.use(cors({
   origin: [
+    'https://reminder-ui-zts6.vercel.app', // Vercel frontend
     'http://localhost:3000',
-    'http://192.168.43.1:3000', // allow mobile frontend
+    'http://192.168.43.1:3000',
     '*'
   ],
   credentials: true
