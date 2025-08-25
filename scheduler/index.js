@@ -66,26 +66,32 @@ redis.ping().then((res) => {
 async function pollDueReminders() {
   try {
     const now = new Date().toISOString();
+    console.log(`[POLL] Checking for due reminders at ${now}`);
     // Query reminders that are due and not triggered
     const result = await pool.query(
       `SELECT * FROM reminders WHERE remind_at <= $1 AND (triggered IS NULL OR triggered = false)`,
       [now]
     );
+    console.log(`[POLL] Found ${result.rows.length} due reminders.`);
     for (const reminder of result.rows) {
-      // Publish to Kafka
-      await producer.send({
-        topic: 'reminder-triggered',
-        messages: [{ value: JSON.stringify(reminder) }],
-      });
-      // Mark as triggered
-      await pool.query(
-        `UPDATE reminders SET triggered = true WHERE id = $1`,
-        [reminder.id]
-      );
-      console.log('Polled and triggered reminder:', reminder);
+      try {
+        console.log(`[POLL] Attempting to send reminder ID ${reminder.id} to Kafka.`);
+        await producer.send({
+          topic: 'reminder-triggered',
+          messages: [{ value: JSON.stringify(reminder) }],
+        });
+        console.log(`[POLL] Successfully sent reminder ID ${reminder.id} to Kafka.`);
+        await pool.query(
+          `UPDATE reminders SET triggered = true WHERE id = $1`,
+          [reminder.id]
+        );
+        console.log(`[POLL] Marked reminder ID ${reminder.id} as triggered.`);
+      } catch (reminderErr) {
+        console.error(`[POLL] Error processing reminder ID ${reminder.id}:`, reminderErr);
+      }
     }
   } catch (err) {
-    console.error('Error polling due reminders:', err);
+    console.error('[POLL] Error polling due reminders:', err);
   }
 }
 
