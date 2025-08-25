@@ -75,10 +75,21 @@ async function pollDueReminders() {
     console.log(`[POLL] Found ${result.rows.length} due reminders.`);
     for (const reminder of result.rows) {
       try {
-        console.log(`[POLL] Attempting to send reminder ID ${reminder.id} to Kafka.`);
+        // Fetch user contact info
+        const userResult = await pool.query(
+          'SELECT email, phone FROM users WHERE id = $1',
+          [reminder.user_id]
+        );
+        const user = userResult.rows[0] || {};
+        const reminderWithContact = {
+          ...reminder,
+          email: user.email,
+          phone: user.phone
+        };
+        console.log(`[POLL] Attempting to send reminder ID ${reminder.id} to Kafka with contact info.`);
         await producer.send({
           topic: 'reminder-triggered',
-          messages: [{ value: JSON.stringify(reminder) }],
+          messages: [{ value: JSON.stringify(reminderWithContact) }],
         });
         console.log(`[POLL] Successfully sent reminder ID ${reminder.id} to Kafka.`);
         await pool.query(
