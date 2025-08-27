@@ -21,6 +21,7 @@ const consumer = kafka.consumer({ groupId: 'notification-group', sessionTimeout:
 // KafkaJS event constants for consumer
 const { consumer: consumerEvents } = require('kafkajs').events;
 
+
 consumer.on(consumerEvents.CRASH, async (event) => {
   console.error('Kafka consumer crashed:', event);
   setTimeout(() => {
