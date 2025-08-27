@@ -98,15 +98,15 @@ async function run() {
 
 
 
-const { events } = require('kafkajs');
-consumer.on(events.CRASH, async (event) => {
+const { consumer: consumerEvents } = require('kafkajs').events;
+consumer.on(consumerEvents.CRASH, async (event) => {
   console.error('Kafka consumer crashed:', event);
   setTimeout(() => {
     run().catch(console.error);
   }, 5000);
 });
 
-consumer.on(events.DISCONNECT, async (event) => {
+consumer.on(consumerEvents.DISCONNECT, async (event) => {
   console.warn('Kafka consumer disconnected:', event);
   setTimeout(() => {
     run().catch(console.error);
