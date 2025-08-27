@@ -21,7 +21,6 @@ const consumer = kafka.consumer({ groupId: 'notification-group', sessionTimeout:
 // KafkaJS event constants for consumer
 const { consumer: consumerEvents } = require('kafkajs').events;
 
-
 consumer.on(consumerEvents.CRASH, async (event) => {
   console.error('Kafka consumer crashed:', event);
   setTimeout(() => {
@@ -115,22 +114,6 @@ async function run() {
   });
 }
 
-
-
-const { consumer: consumerEvents } = require('kafkajs').events;
-consumer.on(consumerEvents.CRASH, async (event) => {
-  console.error('Kafka consumer crashed:', event);
-  setTimeout(() => {
-    run().catch(console.error);
-  }, 5000);
-});
-
-consumer.on(consumerEvents.DISCONNECT, async (event) => {
-  console.warn('Kafka consumer disconnected:', event);
-  setTimeout(() => {
-    run().catch(console.error);
-  }, 5000);
-});
 
 run().catch(console.error);
 
