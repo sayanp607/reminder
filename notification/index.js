@@ -96,13 +96,37 @@ async function run() {
   });
 }
 
+
+// Add auto-reconnect and crash handling for Kafka consumer
+consumer.on('crash', async (event) => {
+  console.error('Kafka consumer crashed:', event);
+  // Try to reconnect after a short delay
+  setTimeout(() => {
+    run().catch(console.error);
+  }, 5000);
+});
+
+consumer.on('disconnect', async (event) => {
+  console.warn('Kafka consumer disconnected:', event);
+  // Try to reconnect after a short delay
+  setTimeout(() => {
+    run().catch(console.error);
+  }, 5000);
+});
+
 run().catch(console.error);
 
-// Add a simple HTTP server to bind to a port for Render
+
+// Add a health check endpoint for Render
 const http = require('http');
 const PORT = process.env.PORT || 6000;
 http.createServer((req, res) => {
-  res.end('Notification service running');
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+  } else {
+    res.end('Notification service running');
+  }
 }).listen(PORT, () => {
   console.log(`HTTP server listening on port ${PORT}`);
 });
