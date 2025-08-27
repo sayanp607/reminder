@@ -97,18 +97,17 @@ async function run() {
 }
 
 
-// Add auto-reconnect and crash handling for Kafka consumer
-consumer.on('crash', async (event) => {
+
+const { events } = require('kafkajs');
+consumer.on(events.CRASH, async (event) => {
   console.error('Kafka consumer crashed:', event);
-  // Try to reconnect after a short delay
   setTimeout(() => {
     run().catch(console.error);
   }, 5000);
 });
 
-consumer.on('disconnect', async (event) => {
+consumer.on(events.DISCONNECT, async (event) => {
   console.warn('Kafka consumer disconnected:', event);
-  // Try to reconnect after a short delay
   setTimeout(() => {
     run().catch(console.error);
   }, 5000);
