@@ -1,8 +1,7 @@
 require('dotenv').config();
 const { Kafka } = require('kafkajs');
 const { Pool } = require('pg');
-const { Queue, Worker } = require('bullmq');
-const Redis = require('ioredis');
+// ...existing code...
 
 const kafka = new Kafka({
   clientId: 'reminder-scheduler',
@@ -21,47 +20,10 @@ const producer = kafka.producer();
 // Setup Postgres connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: false // disable SSL for local Postgres
 });
 
-console.log('Attempting to connect to Redis...');
-const redis = new Redis({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-  password: process.env.REDIS_PASSWORD,
-  tls: {}, // Upstash requires TLS
-  maxRetriesPerRequest: null
-});
-
-redis.on('connect', () => {
-  console.log('Redis connection established.');
-});
-redis.on('ready', () => {
-  console.log('Redis connection ready.');
-});
-redis.on('close', () => {
-  console.log('Redis connection closed.');
-});
-redis.on('reconnecting', () => {
-  console.log('Redis reconnecting...');
-});
-redis.on('end', () => {
-  console.log('Redis connection ended.');
-});
-redis.on('error', (err) => {
-  console.error('Redis connection error:', err);
-});
-
-console.log('Creating BullMQ queue...');
-const queue = new Queue('reminder-queue', { connection: redis });
-console.log('BullMQ queue created.');
-
-// Test Redis connection at startup
-redis.ping().then((res) => {
-  console.log('Redis ping response:', res);
-}).catch((err) => {
-  console.error('Redis ping failed:', err);
-});
+// ...existing code...
 
 async function pollDueReminders() {
   try {
