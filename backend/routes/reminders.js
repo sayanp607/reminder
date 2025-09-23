@@ -1,7 +1,8 @@
 const express = require('express');
-const pool = require('../db');
+const connectDB = require('../db');
 const producer = require('../kafka');
 const authenticateToken = require('../middleware/auth');
+const { ObjectId } = require('mongodb');
 const router = express.Router();
 
 // Create a reminder (requires JWT)
@@ -9,21 +10,23 @@ router.post('/', authenticateToken, async (req, res) => {
   const { title, description, remind_at } = req.body;
   const userId = req.user.userId;
   try {
+    const db = await connectDB();
     // Get user info
-    const userResult = await pool.query('SELECT email, phone FROM users WHERE id = $1', [userId]);
-    const user = userResult.rows[0];
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const result = await pool.query(
-      'INSERT INTO reminders (title, description, remind_at, user_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title, description, remind_at, userId]
-    );
-
-    // Add user contact info to reminder object
-    const reminderWithContact = {
-      ...result.rows[0],
+    const reminderDoc = {
+      title,
+      description,
+      remind_at: new Date(remind_at),
+      user_id: new ObjectId(userId),
+      triggered: false,
+      created_at: new Date(),
       email: user.email,
       phone: user.phone
     };
+    const result = await db.collection('reminders').insertOne(reminderDoc);
+    const reminderWithContact = { ...reminderDoc, _id: result.insertedId };
 
     // Publish event to Kafka
     await producer.connect();
@@ -44,11 +47,12 @@ router.post('/', authenticateToken, async (req, res) => {
 router.get('/', authenticateToken, async (req, res) => {
   const userId = req.user.userId;
   try {
-    const result = await pool.query(
-      'SELECT * FROM reminders WHERE user_id = $1 ORDER BY remind_at DESC',
-      [userId]
-    );
-    res.json(result.rows);
+    const db = await connectDB();
+    const reminders = await db.collection('reminders')
+      .find({ user_id: new ObjectId(userId) })
+      .sort({ remind_at: -1 })
+      .toArray();
+    res.json(reminders);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -59,11 +63,12 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   const userId = req.user.userId;
   const reminderId = req.params.id;
   try {
-    const result = await pool.query(
-      'DELETE FROM reminders WHERE id = $1 AND user_id = $2 RETURNING *',
-      [reminderId, userId]
-    );
-    if (result.rowCount === 0) {
+    const db = await connectDB();
+    const result = await db.collection('reminders').deleteOne({
+      _id: new ObjectId(reminderId),
+      user_id: new ObjectId(userId)
+    });
+    if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Reminder not found or not authorized' });
     }
     res.json({ message: 'Reminder deleted successfully' });

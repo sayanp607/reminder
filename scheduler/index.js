@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Kafka } = require('kafkajs');
-const { Pool } = require('pg');
+const connectDB = require('./db');
 // ...existing code...
 
 const kafka = new Kafka({
@@ -17,50 +17,43 @@ const kafka = new Kafka({
 const consumer = kafka.consumer({ groupId: 'scheduler-group', sessionTimeout: 60000 });
 const producer = kafka.producer();
 
-// Setup Postgres connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: false // disable SSL for local Postgres
-});
+
 
 // ...existing code...
 
 async function pollDueReminders() {
   try {
-    const now = new Date().toISOString();
-    console.log(`[POLL] Checking for due reminders at ${now}`);
-    // Query reminders that are due and not triggered
-    const result = await pool.query(
-      `SELECT * FROM reminders WHERE remind_at <= $1 AND (triggered IS NULL OR triggered = false)`,
-      [now]
-    );
-    console.log(`[POLL] Found ${result.rows.length} due reminders.`);
-    for (const reminder of result.rows) {
+    const now = new Date();
+    console.log(`[POLL] Checking for due reminders at ${now.toISOString()}`);
+    const db = await connectDB();
+    // Find reminders that are due and not triggered
+    const dueReminders = await db.collection('reminders').find({
+      remind_at: { $lte: now },
+      $or: [ { triggered: false }, { triggered: { $exists: false } } ]
+    }).toArray();
+    console.log(`[POLL] Found ${dueReminders.length} due reminders.`);
+    for (const reminder of dueReminders) {
       try {
         // Fetch user contact info
-        const userResult = await pool.query(
-          'SELECT email, phone FROM users WHERE id = $1',
-          [reminder.user_id]
-        );
-        const user = userResult.rows[0] || {};
+        const user = await db.collection('users').findOne({ _id: reminder.user_id });
         const reminderWithContact = {
           ...reminder,
-          email: user.email,
-          phone: user.phone
+          email: user?.email,
+          phone: user?.phone
         };
-        console.log(`[POLL] Attempting to send reminder ID ${reminder.id} to Kafka with contact info.`);
+        console.log(`[POLL] Attempting to send reminder ID ${reminder._id} to Kafka with contact info.`);
         await producer.send({
           topic: 'reminder-triggered',
           messages: [{ value: JSON.stringify(reminderWithContact) }],
         });
-        console.log(`[POLL] Successfully sent reminder ID ${reminder.id} to Kafka.`);
-        await pool.query(
-          `UPDATE reminders SET triggered = true WHERE id = $1`,
-          [reminder.id]
+        console.log(`[POLL] Successfully sent reminder ID ${reminder._id} to Kafka.`);
+        await db.collection('reminders').updateOne(
+          { _id: reminder._id },
+          { $set: { triggered: true } }
         );
-        console.log(`[POLL] Marked reminder ID ${reminder.id} as triggered.`);
+        console.log(`[POLL] Marked reminder ID ${reminder._id} as triggered.`);
       } catch (reminderErr) {
-        console.error(`[POLL] Error processing reminder ID ${reminder.id}:`, reminderErr);
+        console.error(`[POLL] Error processing reminder ID ${reminder._id}:`, reminderErr);
       }
     }
   } catch (err) {

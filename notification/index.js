@@ -87,10 +87,10 @@ async function run() {
           console.error('Error parsing reminder message:', parseErr);
           return;
         }
-        console.log('Processing notification for reminder ID:', reminder.id);
-        await sendSMS(reminder);
-        await sendEmail(reminder);
-        console.log('Notification processing complete for reminder ID:', reminder.id);
+  console.log('Processing notification for reminder ID:', reminder._id);
+  await sendSMS(reminder);
+  await sendEmail(reminder);
+  console.log('Notification processing complete for reminder ID:', reminder._id);
       } catch (err) {
         console.error('Error processing message:', err);
       }
