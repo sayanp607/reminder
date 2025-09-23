@@ -2,7 +2,7 @@
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
-const client = new MongoClient(process.env.DATABASE_URL, { useUnifiedTopology: true });
+const client = new MongoClient(process.env.MONGODB_URL, { useUnifiedTopology: true });
 
 async function connectDB() {
   if (!client.topology || !client.topology.isConnected()) await client.connect();

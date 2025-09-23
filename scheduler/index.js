@@ -38,6 +38,8 @@ async function pollDueReminders() {
         const user = await db.collection('users').findOne({ _id: reminder.user_id });
         const reminderWithContact = {
           ...reminder,
+          _id: reminder._id.toString(),
+          user_id: reminder.user_id?.toString?.() || reminder.user_id,
           email: user?.email,
           phone: user?.phone
         };
